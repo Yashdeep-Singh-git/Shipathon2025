@@ -6,7 +6,12 @@ from dotenv import load_dotenv
 import tempfile
 import io
 import os
-from streamlit_webrtc import webrtc_streamer, WebRtcMode
+from streamlit_webrtc import (
+    RTCConfiguration,
+    WebRtcMode,
+    WebRtcStreamerContext,
+    webrtc_streamer,
+)
 import av
 import numpy as np
 import wave
@@ -26,7 +31,7 @@ class AudioProcessor:
         self.frames = []
         self.recording = False
         
-    def process_audio(self, frame):
+    def recv(self, frame):
         if self.recording:
             sound = frame.to_ndarray()
             sound = sound.astype(np.int16)
@@ -121,15 +126,20 @@ def main():
     
     # Audio recording interface
     st.subheader("Audio Recording")
+
+    # Configure WebRTC
+    RTC_CONFIGURATION = RTCConfiguration(
+        {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+    )
     
     webrtc_ctx = webrtc_streamer(
         key="audio-recorder",
-        mode=WebRtcMode.AUDIO_ONLY,
-        media_stream_constraints={"audio": True, "video": False},
-        audio_processor_factory=lambda: st.session_state.audio_processor,
-        rtc_configuration={
-            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-        }
+        mode="AUDIO_ONLY",  # Changed from WebRtcMode.AUDIO_ONLY to string
+        rtc_configuration=RTC_CONFIGURATION,
+        media_stream_constraints={"video": False, "audio": True},
+        audio_receiver_size=1024,
+        async_processing=True,
+        audio_processor_factory=lambda: st.session_state.audio_processor
     )
     
     col1, col2 = st.columns(2)
