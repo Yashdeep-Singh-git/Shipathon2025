@@ -14,8 +14,8 @@ import queue
 
 # Load environment variables
 load_dotenv()
-# GROQ_API_KEY = os.getenv("groqkey")
-# GEMINI_API_KEY = os.getenv("key")
+# GROQ_API_KEY = os.getenv["groqkey"]
+# GEMINI_API_KEY = os.getenv["key"]
 
 GROQ_API_KEY = st.secrets("groqkey")
 GEMINI_API_KEY = st.secrets("key")
