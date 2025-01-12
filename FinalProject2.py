@@ -7,15 +7,14 @@ import tempfile
 import io
 import os
 from streamlit_webrtc import (
-    RTCConfiguration,
-    WebRtcMode,
-    WebRtcStreamerContext,
     webrtc_streamer,
+    VideoProcessorBase,
+    WebRtcMode,
+    RTCConfiguration
 )
 import av
 import numpy as np
 import wave
-import queue
 
 # Load environment variables
 load_dotenv()
@@ -26,29 +25,34 @@ GEMINI_API_KEY = st.secrets["key"]
 # Configure Gemini
 gemini.configure(api_key=GEMINI_API_KEY)
 
-class AudioProcessor:
-    def __init__(self):
+class AudioProcessor(VideoProcessorBase):
+    def __init__(self) -> None:
         self.frames = []
         self.recording = False
-        
-    def recv(self, frame):
+
+    def recv(self, frame: av.AudioFrame) -> av.AudioFrame:
+        """Process audio frames"""
         if self.recording:
-            sound = frame.to_ndarray()
-            sound = sound.astype(np.int16)
-            self.frames.append(sound)
+            # Convert audio frame to numpy array
+            audio_data = frame.to_ndarray()
+            self.frames.append(audio_data.copy())
         return frame
 
-    def save_audio(self, filename):
-        if not self.frames:
+    def save_audio(self, filename: str) -> bool:
+        """Save recorded audio to file"""
+        if not self.frames or len(self.frames) == 0:
             return False
+
+        # Convert and save to WAV
+        with wave.open(filename, 'wb') as wav_file:
+            wav_file.setnchannels(1)  # Mono
+            wav_file.setsampwidth(2)  # 2 bytes per sample
+            wav_file.setframerate(48000)  # Sample rate
             
-        # Convert to wav format
-        with wave.open(filename, 'wb') as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(48000)
+            # Convert frames to bytes and write
             for frame in self.frames:
-                wf.writeframes(frame.tobytes())
+                wav_file.writeframes(frame.tobytes())
+        
         return True
 
 def transcribe_audio(file_path):
@@ -126,58 +130,63 @@ def main():
     
     # Audio recording interface
     st.subheader("Audio Recording")
-
+    
     # Configure WebRTC
-    RTC_CONFIGURATION = RTCConfiguration(
+    rtc_config = RTCConfiguration(
         {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
     )
-    
-    webrtc_ctx = webrtc_streamer(
+
+    # Create WebRTC streamer
+    ctx = webrtc_streamer(
         key="audio-recorder",
-        mode="AUDIO_ONLY",  # Changed from WebRtcMode.AUDIO_ONLY to string
-        rtc_configuration=RTC_CONFIGURATION,
-        media_stream_constraints={"video": False, "audio": True},
-        audio_receiver_size=1024,
+        mode=WebRtcMode.AUDIO_ONLY,
+        rtc_configuration=rtc_config,
+        media_stream_constraints={
+            "audio": True,
+            "video": False
+        },
+        video_processor_factory=AudioProcessor,
         async_processing=True,
-        audio_processor_factory=lambda: st.session_state.audio_processor
     )
     
     col1, col2 = st.columns(2)
     
     with col1:
-        if st.button("Start Recording", disabled=webrtc_ctx.state.playing and st.session_state.audio_processor.recording):
-            st.session_state.audio_processor.recording = True
-            st.session_state.audio_processor.frames = []
+        if st.button("Start Recording"):
+            if ctx.video_processor:
+                ctx.video_processor.recording = True
+                ctx.video_processor.frames = []
             st.rerun()
     
     with col2:
-        if st.button("Stop Recording", disabled=not (webrtc_ctx.state.playing and st.session_state.audio_processor.recording)):
-            st.session_state.audio_processor.recording = False
-            
-            # Create temporary file for audio
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_audio:
-                if st.session_state.audio_processor.save_audio(temp_audio.name):
-                    try:
-                        with st.spinner("Transcribing audio..."):
-                            transcribed_text = transcribe_audio(temp_audio.name)
-                            st.info("Transcription complete!")
-                        
-                        with st.spinner("Generating notes..."):
-                            notes = generate_notes(transcribed_text)
-                            st.session_state.notes = notes
-                            st.info("Notes generated!")
-                        
-                        # Create document
-                        st.session_state.doc_buffer = create_formatted_doc(notes)
-                        
-                    except Exception as e:
-                        st.error(f"Error processing audio: {e}")
-                    finally:
-                        os.unlink(temp_audio.name)
-            st.rerun()
+        if st.button("Stop Recording"):
+            if ctx.video_processor:
+                ctx.video_processor.recording = False
+                
+                # Create temporary file for audio
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_audio:
+                    if ctx.video_processor.save_audio(temp_audio.name):
+                        try:
+                            with st.spinner("Transcribing audio..."):
+                                transcribed_text = transcribe_audio(temp_audio.name)
+                                st.info("Transcription complete!")
+                            
+                            with st.spinner("Generating notes..."):
+                                notes = generate_notes(transcribed_text)
+                                st.session_state.notes = notes
+                                st.info("Notes generated!")
+                            
+                            # Create document
+                            st.session_state.doc_buffer = create_formatted_doc(notes)
+                            
+                        except Exception as e:
+                            st.error(f"Error processing audio: {e}")
+                        finally:
+                            os.unlink(temp_audio.name)
+                st.rerun()
     
     # Recording status indicator
-    if webrtc_ctx.state.playing and st.session_state.audio_processor.recording:
+    if ctx.state.playing and ctx.video_processor and ctx.video_processor.recording:
         st.markdown("🔴 **Recording in progress...**")
     
     # Display notes if available
