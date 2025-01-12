@@ -10,6 +10,7 @@ from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import av
 import numpy as np
 import wave
+from typing import Union
 
 # Load environment variables
 load_dotenv()
@@ -25,35 +26,26 @@ class AudioProcessor(VideoProcessorBase):
         self.frames = []
         self.recording = False
 
-    def recv(self, frame: av.AudioFrame) -> av.AudioFrame:
-        """Process audio frames"""
-        if self.recording:
-            # Convert audio frame to numpy array
+    def recv(self, frame: Union[av.AudioFrame, av.VideoFrame]) -> Union[av.AudioFrame, av.VideoFrame]:
+        if isinstance(frame, av.AudioFrame) and self.recording:
             audio_data = frame.to_ndarray()
             self.frames.append(audio_data.copy())
         return frame
 
     def save_audio(self, filename: str) -> bool:
-        """Save recorded audio to file"""
         if not self.frames or len(self.frames) == 0:
             return False
 
-        # Convert and save to WAV
         with wave.open(filename, 'wb') as wav_file:
-            wav_file.setnchannels(1)  # Mono
-            wav_file.setsampwidth(2)  # 2 bytes per sample
-            wav_file.setframerate(48000)  # Sample rate
-            
-            # Convert frames to bytes and write
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(48000)
             for frame in self.frames:
                 wav_file.writeframes(frame.tobytes())
-        
         return True
 
 def transcribe_audio(file_path):
-    """Transcribe audio using Groq"""
     client = Groq(api_key=GROQ_API_KEY)
-    
     with open(file_path, "rb") as file:
         transcription = client.audio.transcriptions.create(
             file=(file_path, file.read()),
@@ -66,7 +58,6 @@ def transcribe_audio(file_path):
     return transcription.text
 
 def generate_notes(text):
-    """Generate notes using Gemini"""
     model = gemini.GenerativeModel('gemini-1.5-flash')
     response = model.generate_content(
         "write notes with headings and numbering (and write headings on different line): " + text
@@ -74,11 +65,9 @@ def generate_notes(text):
     return response.text
 
 def create_formatted_doc(text):
-    """Create and format a Word document"""
     doc = Document()
     paragraph = doc.add_paragraph(text)
     
-    # Format text (bold and underline between **)
     for paragraph in doc.paragraphs:
         text = paragraph.text
         runs_to_add = []
@@ -103,7 +92,6 @@ def create_formatted_doc(text):
             run.bold = is_bold
             run.underline = is_bold
     
-    # Save to bytes buffer
     doc_buffer = io.BytesIO()
     doc.save(doc_buffer)
     doc_buffer.seek(0)
@@ -112,33 +100,24 @@ def create_formatted_doc(text):
 def main():
     st.title("Audio to Notes Converter")
     
-    # Initialize session state
-    if 'audio_processor' not in st.session_state:
-        st.session_state.audio_processor = AudioProcessor()
     if 'notes' not in st.session_state:
         st.session_state.notes = None
     if 'doc_buffer' not in st.session_state:
         st.session_state.doc_buffer = None
     
-    # File name input
     file_name = st.text_input("Enter name for your file:", "my_notes")
     
-    # Audio recording interface
     st.subheader("Audio Recording")
-
-    # Create WebRTC streamer with simplified configuration
+    
+    # Simplified webrtc_streamer configuration
     ctx = webrtc_streamer(
-        key="audio-recorder",
-        mode="AUDIO_ONLY",  # Using string instead of enum
-        rtc_configuration={
-            "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-        },
+        key="audio_recorder",
+        audio_receiver_size=1024,
         media_stream_constraints={
-            "audio": True,
-            "video": False
+            "audio": {"echoCancellation": True},
+            "video": False,
         },
-        video_processor_factory=AudioProcessor,
-        async_processing=True,
+        video_processor_factory=AudioProcessor
     )
     
     col1, col2 = st.columns(2)
@@ -155,7 +134,6 @@ def main():
             if ctx.video_processor:
                 ctx.video_processor.recording = False
                 
-                # Create temporary file for audio
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_audio:
                     if ctx.video_processor.save_audio(temp_audio.name):
                         try:
@@ -168,7 +146,6 @@ def main():
                                 st.session_state.notes = notes
                                 st.info("Notes generated!")
                             
-                            # Create document
                             st.session_state.doc_buffer = create_formatted_doc(notes)
                             
                         except Exception as e:
@@ -177,16 +154,13 @@ def main():
                             os.unlink(temp_audio.name)
                 st.rerun()
     
-    # Recording status indicator
     if ctx.state.playing and ctx.video_processor and ctx.video_processor.recording:
         st.markdown("🔴 **Recording in progress...**")
     
-    # Display notes if available
     if st.session_state.notes:
         st.subheader("Generated Notes")
         st.text(st.session_state.notes)
         
-        # Download button
         if st.session_state.doc_buffer:
             st.download_button(
                 label="Download Word Document",
