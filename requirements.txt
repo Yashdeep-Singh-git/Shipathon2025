@@ -1,7 +1,7 @@
 docx==0.2.4
 groq==0.15.0
 protobuf==5.29.3
-PyAudio==0.2.14
+PyAudio==0.2.13
 python-dotenv==1.0.1
 python_docx==1.1.2
 streamlit==1.41.1
