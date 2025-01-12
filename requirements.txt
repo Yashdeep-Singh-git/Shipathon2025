@@ -6,3 +6,4 @@ python-dotenv==1.0.1
 python_docx==1.1.2
 streamlit==1.41.1
 gemini==0.30.2
+ipython-cluster-helper==0.6.0
