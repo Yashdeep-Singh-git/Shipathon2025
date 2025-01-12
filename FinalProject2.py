@@ -17,8 +17,12 @@ load_dotenv()
 # GROQ_API_KEY = os.getenv("groqkey")
 # GEMINI_API_KEY = os.getenv("key")
 
-GROQ_API_KEY = st.secrets("groqkey")
-GEMINI_API_KEY = st.secrets("key")
+# GROQ_API_KEY = st.secrets("groqkey")
+# GEMINI_API_KEY = st.secrets("key")
+
+GROQ_API_KEY = "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"
+GEMINI_API_KEY = "AIzaSyBAaiw9WIySURc2eoeU7SdBNXIlJFEHWWw"
+
 
 # Configure Gemini
 gemini.configure(api_key=GEMINI_API_KEY)
