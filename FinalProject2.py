@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 import tempfile
 import io
 import os
-from streamlit_webrtc import webrtc_streamer
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
 import av
 import numpy as np
 import wave
@@ -124,7 +124,8 @@ def main():
     
     webrtc_ctx = webrtc_streamer(
         key="audio-recorder",
-        mode=webrtc_streamer.AUDIO_ONLY,
+        mode=WebRtcMode.AUDIO_ONLY,
+        media_stream_constraints={"audio": True, "video": False},
         audio_processor_factory=lambda: st.session_state.audio_processor,
         rtc_configuration={
             "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
