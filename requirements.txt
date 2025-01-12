@@ -9,3 +9,4 @@ python_docx==1.1.2
 Requests==2.32.3
 streamlit==1.41.1
 google-generativeai==0.8.3
+streamlit-webrtc==0.47.1
